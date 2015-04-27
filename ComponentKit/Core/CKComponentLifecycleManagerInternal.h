@@ -9,7 +9,7 @@
  */
 
 #import <ComponentKit/CKComponentLifecycleManager.h>
-#import <ComponentKit/CKComponentScopeInternal.h>
+#import <ComponentKit/CKComponentScopeRoot.h>
 
 /**
  Debug Purposes Only.
