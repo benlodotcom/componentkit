@@ -57,7 +57,6 @@ CKComponentDataSourceDelegate
 {
   CKComponentDataSource *_componentDataSource;
   CKCellConfigurationFunction _cellConfigurationFunction;
-  CKCollectionViewDataSourceChangesetRegulator *_changesetRegulator;
   NSMapTable *_cellToItemMap;
 }
 
@@ -82,7 +81,6 @@ CK_FINAL_CLASS([CKCollectionViewDataSource class]);
     _collectionView = collectionView;
     _collectionView.dataSource = self;
     [_collectionView registerClass:[CKCollectionViewDataSourceCell class] forCellWithReuseIdentifier:kReuseIdentifier];
-    _changesetRegulator = [[CKCollectionViewDataSourceChangesetRegulator alloc] initWithCollectionView:collectionView];
     _cellToItemMap = [NSMapTable weakToStrongObjectsMapTable];
   }
   return self;
@@ -191,7 +189,10 @@ static NSString *const kReuseIdentifier = @"com.component_kit.collection_view_da
           hasChangesOfTypes:(CKComponentDataSourceChangeType)changeTypes
         changesetApplicator:(ck_changeset_applicator_t)changesetApplicator
 {
-  [_changesetRegulator enqueueChangesetApplicator:changesetApplicator];
+  [_collectionView performBatchUpdates:^{
+    const auto &changeset = changesetApplicator();
+    applyChangesetToCollectionView(changeset, _collectionView);
+  } completion:nil];
 }
 
 - (void)componentDataSource:(CKComponentDataSource *)componentDataSource
@@ -205,45 +206,6 @@ static NSString *const kReuseIdentifier = @"com.component_kit.collection_view_da
     CKComponentBoundsAnimationApplyAfterCollectionViewBatchUpdates(boundsAnimationContext, animation);
   } else {
     [[_collectionView collectionViewLayout] invalidateLayout];
-  }
-}
-
-@end
-
-@implementation CKCollectionViewDataSourceChangesetRegulator {
-  UICollectionView *_collectionView;
-  // Internal queue for the changeset applicators
-  NSMutableArray *_changesetQueue;
-  BOOL _processingChangeset;
-}
-
-- (instancetype)initWithCollectionView:(UICollectionView *)collectionView
-{
-  if (self = [super init]) {
-    _collectionView = collectionView;
-    _changesetQueue = [NSMutableArray array];
-  }
-  return self;
-}
-
-- (void)enqueueChangesetApplicator:(ck_changeset_applicator_t)changesetApplicator
-{
-  [_changesetQueue addObject:changesetApplicator];
-  [self applyNextChangeset];
-}
-
-- (void)applyNextChangeset {
-  if (!_processingChangeset && [_changesetQueue count]) {
-    ck_changeset_applicator_t headChangeset = _changesetQueue[0];
-    [_changesetQueue removeObjectAtIndex:0];
-    [_collectionView performBatchUpdates:^{
-      _processingChangeset = YES;
-      const auto &changeset = headChangeset();
-      applyChangesetToCollectionView(changeset, _collectionView);
-    } completion:^(BOOL){
-      _processingChangeset = NO;
-      [self applyNextChangeset];
-    }];
   }
 }
 
