@@ -13,6 +13,8 @@
 
 #import <ComponentKit/ComponentKit.h>
 
+#import "CKCollectionViewTransactionalDataSource.h"
+#import "CKTransactionalComponentDataSourceChangeset.h"
 #import "InteractiveQuoteComponent.h"
 #import "QuoteModelController.h"
 #import "Quote.h"
@@ -24,7 +26,7 @@
 
 @implementation WildeGuessCollectionViewController
 {
-  CKCollectionViewDataSource *_dataSource;
+  CKCollectionViewTransactionalDataSource *_dataSource;
   QuoteModelController *_quoteModelController;
   CKComponentFlexibleSizeRangeProvider *_sizeRangeProvider;
 }
@@ -58,30 +60,30 @@
   self.collectionView.delegate = self;
 
   QuoteContext *context = [[QuoteContext alloc] initWithImageNames:imageNames];
-  _dataSource = [[CKCollectionViewDataSource alloc] initWithCollectionView:self.collectionView
-                                               supplementaryViewDataSource:nil                                                         
-                                                         componentProvider:[self class]
-                                                                   context:context
-                                                 cellConfigurationFunction:nil];
+  _dataSource = [[CKCollectionViewTransactionalDataSource alloc] initWithCollectionView:self.collectionView
+                                                                      componentProvider:[self class]
+                                                                                context:context
+                                                                         itemsSizeRange:{{self.collectionView.bounds.size.width,0}, {self.collectionView.bounds.size.width, INFINITY}}];
   // Insert the initial section
-  CKArrayControllerSections sections;
-  sections.insert(0);
-  [_dataSource enqueueChangeset:{sections, {}} constrainedSize:{}];
-  [self _enqueuePage:[_quoteModelController fetchNewQuotesPageWithCount:4]];
+  [_dataSource applyChangeset:[[[CKTransactionalComponentDataSourceChangesetBuilder transactionalComponentDataSourceChangeset] withInsertedSections:[NSIndexSet indexSetWithIndex:0]] build]
+                         mode:CKTransactionalComponentDataSourceModeSynchronous
+                     userInfo:nil];
+  [self _enqueuePage:[_quoteModelController fetchNewQuotesPageWithCount:4] withMode:CKTransactionalComponentDataSourceModeSynchronous];
 }
 
-- (void)_enqueuePage:(QuotesPage *)quotesPage
+- (void)_enqueuePage:(QuotesPage *)quotesPage withMode:(CKTransactionalComponentDataSourceMode)mode
 {
   NSArray *quotes = quotesPage.quotes;
   NSInteger position = quotesPage.position;
 
   // Convert the array of quotes to a valid changeset
-  CKArrayControllerInputItems items;
+  NSMutableDictionary *insertedItems = [NSMutableDictionary dictionary];
   for (NSInteger i = 0; i < [quotes count]; i++) {
-    items.insert([NSIndexPath indexPathForRow:position + i inSection:0], quotes[i]);
+    [insertedItems setObject:quotes[i] forKey:[NSIndexPath indexPathForRow:position + i inSection:0]];
   }
-  [_dataSource enqueueChangeset:{{}, items}
-                constrainedSize:[_sizeRangeProvider sizeRangeForBoundingSize:self.collectionView.bounds.size]];
+  [_dataSource applyChangeset:[[[CKTransactionalComponentDataSourceChangesetBuilder transactionalComponentDataSourceChangeset] withInsertedItems:insertedItems] build]
+                         mode:mode
+                     userInfo:nil];
 }
 
 #pragma mark - UICollectionViewDelegateFlowLayout
@@ -97,14 +99,14 @@
        willDisplayCell:(UICollectionViewCell *)cell
     forItemAtIndexPath:(NSIndexPath *)indexPath
 {
-  [_dataSource announceWillAppearForItemInCell:cell];
+  //TODO
 }
 
 - (void)collectionView:(UICollectionView *)collectionView
   didEndDisplayingCell:(UICollectionViewCell *)cell
     forItemAtIndexPath:(NSIndexPath *)indexPath
 {
-  [_dataSource announceDidDisappearForItemInCell:cell];
+  //TODO
 }
 
 #pragma mark - CKComponentProvider
@@ -121,7 +123,7 @@
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
   if (scrolledToBottomWithBuffer(scrollView.contentOffset, scrollView.contentSize, scrollView.contentInset, scrollView.bounds)) {
-    [self _enqueuePage:[_quoteModelController fetchNewQuotesPageWithCount:8]];
+    [self _enqueuePage:[_quoteModelController fetchNewQuotesPageWithCount:8] withMode:CKTransactionalComponentDataSourceModeAsynchronous];
   }
 }
 
